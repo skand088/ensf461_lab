@@ -36,7 +36,19 @@ int main() {
             return 0;
         }
         else {
-	  // Here goes the magic!
+            pid_t pid = fork();
+            if (pid == 0){
+                char *args[] = {parsedinput, NULL};
+                execve(parsedinput, args, NULL);
+                perror("execve failed.");
+                _exit(1);
+            } else if (pid > 0 ){
+                int status;
+                waitpid(pid, &status, 0);
+            } else {
+                perror("fork failed.");
+            }
+            
         }
 
         //Remember to free any memory you allocate!
