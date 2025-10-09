@@ -4,10 +4,41 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "parser.h"
+#include <stdlib.h>
+#include <errno.h>
 
 #define BUFLEN 1024
 
 //To Do: This base file has been provided to help you start the lab, you'll need to heavily modify it to implement all of the features
+void honour_PATH(char *args[]){
+    char command[BUFLEN];
+                 
+                if (command[0] == '/') {
+                    execve(args[0], args, NULL);
+                } else if (strchr(args[0], '/')) {
+                    execve(args[0], args, NULL);
+                } else {
+                    char *path_env = getenv("PATH");
+                    if (path_env) {
+                        char *path_copy = strdup(path_env);
+                        char *dir = strtok(path_copy, ":");
+                        char fullpath[1024];
+
+                        while (dir != NULL) {
+                            snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, args[0]);
+                            if (access(fullpath, X_OK) == 0) {
+                                execve(fullpath, args, NULL);
+                            }
+                            dir = strtok(NULL, ":");
+                        }
+                        free(path_copy);
+                    }
+                    fprintf(stderr, "Command not found: %s\n", args[0]);
+                    _exit(1);
+                }
+
+}
+
 
 int main() {
     char buffer[1024];
@@ -40,9 +71,11 @@ int main() {
             if (pid == 0){
                 char *args[] = {parsedinput, NULL};
                 parse_args(parsedinput, args, 64);
-                execve(args[0], args, NULL);
-                perror("execve failed.");
+                honour_PATH(args);
+                
+                perror("execve failed");
                 _exit(1);
+
             } else if (pid > 0 ){
                 int status;
                 waitpid(pid, &status, 0);
