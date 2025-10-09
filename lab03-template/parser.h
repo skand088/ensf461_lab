@@ -13,5 +13,7 @@ size_t trimstring(char* outputbuffer, const char* inputbuffer, size_t bufferlen)
 size_t firstword(char* outputbuffer, const char* inputbuffer, size_t bufferlen);
 bool isvalidascii(const char* inputbuffer, size_t bufferlen);
 int findpipe(const char* inputbuffer, size_t bufferlen);
+int parse_args(char *input, char *args[], int max_args);
+
 
 #endif

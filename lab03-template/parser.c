@@ -1,4 +1,29 @@
 #include "parser.h"
+#include <ctype.h> 
+
+int parse_args(char *input, char *args[], int max_args) {
+    int argc = 0;
+    char *p = input;
+    
+    while (*p && argc < max_args - 1) {
+        while (isspace((unsigned char)*p)) p++; // skip spaces
+        if (*p == '\0') break;
+
+        if (*p == '"') { // handle quoted string
+            p++;
+            args[argc++] = p;
+            while (*p && *p != '"') p++;
+            if (*p == '"') *p++ = '\0'; // terminate string
+        } else {
+            args[argc++] = p;
+            while (*p && !isspace((unsigned char)*p)) p++;
+            if (*p) *p++ = '\0'; // terminate each token
+        }
+    }
+    args[argc] = NULL; // execve needs NULL-terminated array
+    return argc;
+}
+
 
 //Function to trim whitespace and ASCII control characters from buffer
 //[Input] char* inputbuffer - input string to trim

@@ -39,7 +39,8 @@ int main() {
             pid_t pid = fork();
             if (pid == 0){
                 char *args[] = {parsedinput, NULL};
-                execve(parsedinput, args, NULL);
+                parse_args(parsedinput, args, 64);
+                execve(args[0], args, NULL);
                 perror("execve failed.");
                 _exit(1);
             } else if (pid > 0 ){
