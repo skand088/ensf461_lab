@@ -64,6 +64,7 @@ void append_to(struct job **head_pointer, int arrival, int length, int tickets)
     cur->next = new_job;
 
     new_job->remaining = length;
+    new_job->remaining = length;
 
     return;
 }
@@ -170,62 +171,62 @@ void policy_SJF()
 void policy_STCF()
 {
     printf("Execution trace with STCF:\n");
-    
+
     int current_time = 0;
     int num_completed = 0;
-
-    // convert linked list to array for easy access
-    struct job *jobs[numofjobs];
-    struct job *curr = head;
-    int i = 0;
-    while (curr) {
-        jobs[i++] = curr;
-        curr = curr->next;
-    }
-
     struct job *current_job = NULL;
 
     while (num_completed < numofjobs) {
-        // find the job with the shortest remaining time among arrived jobs
-        int shortest_idx = -1;
+        // Find the job with shortest remaining time among arrived jobs
+        struct job *job = NULL;
+        struct job *iter = head;
         int shortest_remaining = INT_MAX;
 
-        for (int j = 0; j < numofjobs; j++) {
-            if (jobs[j]->remaining > 0 && jobs[j]->arrival <= current_time) {
-                if (jobs[j]->remaining < shortest_remaining) {
-                    shortest_remaining = jobs[j]->remaining;
-                    shortest_idx = j;
+        while (iter) {
+            if (iter->remaining > 0 && iter->arrival <= current_time) {
+                if (iter->remaining < shortest_remaining ||
+                    (iter->remaining == shortest_remaining && iter->id < (job ? job->id : INT_MAX))) {
+                    shortest_remaining = iter->remaining;
+                    job = iter;
                 }
             }
+            iter = iter->next;
         }
 
-        if (shortest_idx == -1) {
-            // no jobs have arrived yet
+        if (!job) {
             current_time++;
             continue;
         }
 
-        struct job *job = jobs[shortest_idx];
+        // Determine how long this job can run before preemption
+        int run_time = job->remaining;
+        struct job *check = head;
+        while (check) {
+            if (check->remaining > 0 && check->arrival > current_time && check->arrival < current_time + run_time) {
+                if (check->remaining < job->remaining) {
+                    run_time = check->arrival - current_time;
+                }
+            }
+            check = check->next;
+        }
 
-        // if this is the first time running this job
-        if (job->remaining == job->length)
-            printf("t=%d: Job %d starts (arrival=%d, length=%d)\n", current_time, job->id, job->arrival, job->length);
-        else if (current_job != job)
-            printf("t=%d: Switch to Job %d\n", current_time, job->id);
+        // Record response time if first run
+        if (job->start_time == -1) job->start_time = current_time;
 
-        current_job = job;
+        // Print run segment in required format
+        printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n",
+               current_time, job->id, job->arrival, run_time);
 
-        // run for 1 time unit
-        job->remaining--;
-        current_time++;
+        // Update job and current_time
+        job->remaining -= run_time;
+        current_time += run_time;
 
+        if (job->remaining == 0) {
         if (job->remaining == 0) {
             job->finish_time = current_time;
             num_completed++;
-            printf("t=%d: Job %d finished\n", current_time, job->id);
         }
     }
-
 
     printf("End of execution with STCF.\n");
 }
@@ -505,7 +506,36 @@ int main(int argc, char **argv)
     }
     else if (strcmp(pname, "STCF") == 0)
     {
-        // TODO
+       policy_STCF();
+        if (analysis == 1){
+            printf("Begin analyzing STCF:\n");
+            struct job *cur2 = head;
+            int count = 0;
+            double total_response = 0;
+            double total_turnaround = 0;
+            double total_wait = 0;
+
+            while (cur2) {
+                int response = cur2->start_time - cur2->arrival;
+                int turnaround = cur2->finish_time - cur2->arrival; 
+                int wait = turnaround - cur2->length;
+                printf("Job %d -- Response time: %d  Turnaround: %d  Wait: %d\n",
+                       cur2->id, response, turnaround, wait);
+                total_response += response;
+                total_turnaround += turnaround;
+                total_wait += wait;
+                count++;
+                cur2 = cur2->next;
+            }
+
+            if (count > 0) {
+                printf("Average -- Response: %.2f  Turnaround %.2f  Wait %.2f\n",
+                       total_response / count,
+                       total_turnaround / count,
+                       total_wait / count);
+            }
+            printf("End analyzing STCF.\n");
+        }
     }
     else if (strcmp(pname, "RR") == 0)
     {
