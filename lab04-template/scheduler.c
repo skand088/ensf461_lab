@@ -56,6 +56,8 @@ void append_to(struct job **head_pointer, int arrival, int length, int tickets){
         cur = cur->next;
     cur->next = new_job;
 
+    new_job->remaining_time = length;
+
     return;
 }
 
@@ -116,8 +118,62 @@ void policy_SJF()
 void policy_STCF()
 {
     printf("Execution trace with STCF:\n");
+    
+    int current_time = 0;
+    int num_completed = 0;
 
-    // TODO: implement STCF policy
+    // convert linked list to array for easy access
+    struct job *jobs[numofjobs];
+    struct job *curr = head;
+    int i = 0;
+    while (curr) {
+        jobs[i++] = curr;
+        curr = curr->next;
+    }
+
+    struct job *current_job = NULL;
+
+    while (num_completed < numofjobs) {
+        // find the job with the shortest remaining time among arrived jobs
+        int shortest_idx = -1;
+        int shortest_remaining = INT_MAX;
+
+        for (int j = 0; j < numofjobs; j++) {
+            if (jobs[j]->remaining_time > 0 && jobs[j]->arrival <= current_time) {
+                if (jobs[j]->remaining_time < shortest_remaining) {
+                    shortest_remaining = jobs[j]->remaining_time;
+                    shortest_idx = j;
+                }
+            }
+        }
+
+        if (shortest_idx == -1) {
+            // no jobs have arrived yet
+            current_time++;
+            continue;
+        }
+
+        struct job *job = jobs[shortest_idx];
+
+        // if this is the first time running this job
+        if (job->remaining_time == job->length)
+            printf("t=%d: Job %d starts (arrival=%d, length=%d)\n", current_time, job->id, job->arrival, job->length);
+        else if (current_job != job)
+            printf("t=%d: Switch to Job %d\n", current_time, job->id);
+
+        current_job = job;
+
+        // run for 1 time unit
+        job->remaining_time--;
+        current_time++;
+
+        if (job->remaining_time == 0) {
+            job->finish_time = current_time;
+            num_completed++;
+            printf("t=%d: Job %d finished\n", current_time, job->id);
+        }
+    }
+
 
     printf("End of execution with STCF.\n");
 }
