@@ -6,12 +6,13 @@
 #include <limits.h>
 #include <time.h>
 
-#define min(a,b) (((a)<(b))?(a):(b))
+#define min(a, b) (((a) < (b)) ? (a) : (b))
 
 // total jobs
 int numofjobs = 0;
 
-struct job {
+struct job
+{
     // job id is ordered by the arrival; jobs arrived first have smaller job id, always increment by 1
     int id;
     int arrival; // arrival time; safely assume the time unit has the minimal increment of 1
@@ -30,11 +31,12 @@ struct job {
 // the workload list
 struct job *head = NULL;
 
-
-void append_to(struct job **head_pointer, int arrival, int length, int tickets){
+void append_to(struct job **head_pointer, int arrival, int length, int tickets)
+{
 
     struct job *new_job = malloc(sizeof(*new_job));
-    if (!new_job) {
+    if (!new_job)
+    {
         perror("malloc");
         exit(EXIT_FAILURE);
     }
@@ -49,7 +51,8 @@ void append_to(struct job **head_pointer, int arrival, int length, int tickets){
     new_job->done = 0;
     new_job->next = NULL;
 
-    if (*head_pointer == NULL) {
+    if (*head_pointer == NULL)
+    {
         *head_pointer = new_job;
         return;
     }
@@ -59,40 +62,43 @@ void append_to(struct job **head_pointer, int arrival, int length, int tickets){
         cur = cur->next;
     cur->next = new_job;
 
+    new_job->remaining_time = length;
+
     return;
 }
 
-
-void read_job_config(const char* filename)
+void read_job_config(const char *filename)
 {
     FILE *fp;
     char *line = NULL;
     size_t len = 0;
     ssize_t read;
-    int tickets  = 0;
+    int tickets = 0;
 
-    char* delim = ",";
+    char *delim = ",";
     char *arrival = NULL;
     char *length = NULL;
 
     fp = fopen(filename, "r");
-    if (fp == NULL) {
+    if (fp == NULL)
+    {
         fprintf(stderr, "Error opening file '%s'\n", filename);
         exit(EXIT_FAILURE);
     }
 
     fseek(fp, 0, SEEK_END);
-        if (ftell(fp) == 0) {
-            fprintf(stderr, "Error: Input file '%s' is empty.\n", filename);
-            fclose(fp);
-            exit(EXIT_FAILURE);
-            }
-            rewind(fp);
+    if (ftell(fp) == 0)
+    {
+        fprintf(stderr, "Error: Input file '%s' is empty.\n", filename);
+        fclose(fp);
+        exit(EXIT_FAILURE);
+    }
+    rewind(fp);
 
     while ((read = getline(&line, &len, fp)) != -1)
     {
-        if( line[read-1] == '\n' )
-            line[read-1] =0;
+        if (line[read - 1] == '\n')
+            line[read - 1] = 0;
         arrival = strtok(line, delim);
         length = strtok(NULL, delim);
         tickets += 100;
@@ -101,9 +107,9 @@ void read_job_config(const char* filename)
     }
 
     fclose(fp);
-    if (line) free(line);
+    if (line)
+        free(line);
 }
-
 
 void policy_SJF()
 {
@@ -158,58 +164,155 @@ void policy_SJF()
     }
 
     printf("End of execution with SJF.\n");
-
 }
-
 
 void policy_STCF()
 {
     printf("Execution trace with STCF:\n");
+    
+    int current_time = 0;
+    int num_completed = 0;
 
-    // TODO: implement STCF policy
+    // convert linked list to array for easy access
+    struct job *jobs[numofjobs];
+    struct job *curr = head;
+    int i = 0;
+    while (curr) {
+        jobs[i++] = curr;
+        curr = curr->next;
+    }
+
+    struct job *current_job = NULL;
+
+    while (num_completed < numofjobs) {
+        // find the job with the shortest remaining time among arrived jobs
+        int shortest_idx = -1;
+        int shortest_remaining = INT_MAX;
+
+        for (int j = 0; j < numofjobs; j++) {
+            if (jobs[j]->remaining_time > 0 && jobs[j]->arrival <= current_time) {
+                if (jobs[j]->remaining_time < shortest_remaining) {
+                    shortest_remaining = jobs[j]->remaining_time;
+                    shortest_idx = j;
+                }
+            }
+        }
+
+        if (shortest_idx == -1) {
+            // no jobs have arrived yet
+            current_time++;
+            continue;
+        }
+
+        struct job *job = jobs[shortest_idx];
+
+        // if this is the first time running this job
+        if (job->remaining_time == job->length)
+            printf("t=%d: Job %d starts (arrival=%d, length=%d)\n", current_time, job->id, job->arrival, job->length);
+        else if (current_job != job)
+            printf("t=%d: Switch to Job %d\n", current_time, job->id);
+
+        current_job = job;
+
+        // run for 1 time unit
+        job->remaining_time--;
+        current_time++;
+
+        if (job->remaining_time == 0) {
+            job->finish_time = current_time;
+            num_completed++;
+            printf("t=%d: Job %d finished\n", current_time, job->id);
+        }
+    }
+
 
     printf("End of execution with STCF.\n");
 }
-
 
 void policy_RR(int slice)
 {
     printf("Execution trace with RR:\n");
 
-    // TODO: implement RR policy
-
     printf("End of execution with RR.\n");
 }
-
 
 void policy_LT(int slice)
 {
     printf("Execution trace with LT:\n");
 
-    // Leave this here, it will ensure the scheduling behavior remains deterministic
-    srand(42);
+    srand(42); // deterministic
+    int current_time = 0;
+    int finished_jobs = 0;
 
-    // In the following, you'll need to:
-    // Figure out which active job to run first
-    // Pick the job with the shortest remaining time
-    // Considers jobs in order of arrival, so implicitly breaks ties by choosing the job with the lowest ID
+    while (finished_jobs < numofjobs)
+    {
+        int total_tickets = 0;
+        struct job *cur;
 
-    // To achieve consistency with the tests, you are encouraged to choose the winning ticket as follows:
-    // int winning_ticket = rand() % total_tickets;
-    // And pick the winning job using the linked list approach discussed in class, or equivalent
+        // sum tickets of ready jobs
+        for (cur = head; cur != NULL; cur = cur->next)
+        {
+            if (cur->arrival <= current_time && cur->remaining > 0)
+                total_tickets += cur->tickets;
+        }
+
+        // no ready job, advance time
+        if (total_tickets == 0)
+        {
+            current_time++;
+            continue;
+        }
+
+        // choose winner
+        int winning_ticket = rand() % total_tickets;
+        int cumulative = 0;
+        struct job *selected = NULL;
+
+        for (cur = head; cur != NULL; cur = cur->next)
+        {
+            if (cur->arrival <= current_time && cur->remaining > 0)
+            {
+                cumulative += cur->tickets;
+                if (cumulative > winning_ticket)
+                {
+                    selected = cur;
+                    break;
+                }
+            }
+        }
+
+        // first run timestamp
+        if (selected->start_time == -1)
+            selected->start_time = current_time;
+
+        int run_time = min(slice, selected->remaining);
+
+        printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n",
+               current_time, selected->id, selected->arrival, run_time);
+
+        selected->remaining -= run_time;
+        current_time += run_time;
+
+        if (selected->remaining == 0)
+        {
+            selected->finish_time = current_time;
+            selected->wait_time = selected->finish_time - selected->arrival - selected->length;
+            finished_jobs++;
+        }
+    }
 
     printf("End of execution with LT.\n");
-
 }
 
-
-void policy_FIFO(){
+void policy_FIFO()
+{
     printf("Execution trace with FIFO:\n");
 
     int current_time = 0;
     struct job *cur = head;
 
-    while (cur) {
+    while (cur)
+    {
         // if job hasn't arrived yet, advance time to its arrival
         if (current_time < cur->arrival)
             current_time = cur->arrival;
@@ -226,15 +329,14 @@ void policy_FIFO(){
         cur->finish_time = current_time;
     cur->done = 1;
 
-
         cur = cur->next;
     }
 
     printf("End of execution with FIFO.\n");
 }
 
-
-int main(int argc, char **argv){
+int main(int argc, char **argv)
+{
 
     static char usage[] = "usage: %s analysis policy slice trace\n";
 
@@ -243,12 +345,11 @@ int main(int argc, char **argv){
     char *tname;
     int slice;
 
-
     if (argc < 5)
     {
         fprintf(stderr, "missing variables\n");
         fprintf(stderr, usage, argv[0]);
-		exit(1);
+        exit(1);
     }
 
     // if 0, we don't analysis the performance
@@ -265,9 +366,11 @@ int main(int argc, char **argv){
 
     read_job_config(tname);
 
-    if (strcmp(pname, "FIFO") == 0){
+    if (strcmp(pname, "FIFO") == 0)
+    {
         policy_FIFO();
-        if (analysis == 1){
+        if (analysis == 1)
+        {
             printf("Begin analyzing FIFO:\n");
             struct job *cur2 = head;
             int count = 0;
@@ -275,10 +378,11 @@ int main(int argc, char **argv){
             double total_turnaround = 0;
             double total_wait = 0;
 
-            while (cur2) {
+            while (cur2)
+            {
                 int response = cur2->start_time - cur2->arrival;
-                int turnaround = cur2->finish_time - cur2->arrival; 
-                int wait = cur2->wait_time; 
+                int turnaround = cur2->finish_time - cur2->arrival;
+                int wait = cur2->wait_time;
 
                 printf("Job %d -- Response time: %d Turnaround: %d Wait: %d\n",
                        cur2->id, response, turnaround, wait);
@@ -290,7 +394,8 @@ int main(int argc, char **argv){
                 cur2 = cur2->next;
             }
 
-            if (count > 0) {
+            if (count > 0)
+            {
                 printf("Average -- Response: %.2f Turnaround %.2f Wait %.2f\n",
                        total_response / count,
                        total_turnaround / count,
@@ -340,12 +445,45 @@ int main(int argc, char **argv){
     }
     else if (strcmp(pname, "RR") == 0)
     {
-        // TODO
     }
     else if (strcmp(pname, "LT") == 0)
     {
-        // TODO
+        policy_LT(slice);
+        if (analysis == 1)
+        {
+            printf("Begin analyzing LT:\n");
+            struct job *cur2 = head;
+            int count = 0;
+            double total_response = 0;
+            double total_turnaround = 0;
+            double total_wait = 0;
+
+            while (cur2)
+            {
+                int response = cur2->start_time - cur2->arrival;
+                int turnaround = cur2->finish_time - cur2->arrival;
+                int wait = cur2->wait_time;
+
+                printf("Job %d -- Response time: %d  Turnaround: %d  Wait: %d\n",
+                       cur2->id, response, turnaround, wait);
+
+                total_response += response;
+                total_turnaround += turnaround;
+                total_wait += wait;
+                count++;
+                cur2 = cur2->next;
+            }
+
+            if (count > 0)
+            {
+                printf("Average -- Response: %.2f  Turnaround %.2f  Wait %.2f\n",
+                       total_response / count,
+                       total_turnaround / count,
+                       total_wait / count);
+            }
+            printf("End analyzing LT.\n");
+        }
     }
 
-	exit(0);
+    exit(0);
 }
