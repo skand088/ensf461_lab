@@ -25,6 +25,7 @@ struct job
     int wait_time;   // accumulated wait time
     int done;        // 0 = not finished, 1 = finished
     struct job *next;
+    int remaining;
 
 };
 
@@ -62,7 +63,7 @@ void append_to(struct job **head_pointer, int arrival, int length, int tickets)
         cur = cur->next;
     cur->next = new_job;
 
-    new_job->remaining_time = length;
+    new_job->remaining = length;
 
     return;
 }
@@ -190,9 +191,9 @@ void policy_STCF()
         int shortest_remaining = INT_MAX;
 
         for (int j = 0; j < numofjobs; j++) {
-            if (jobs[j]->remaining_time > 0 && jobs[j]->arrival <= current_time) {
-                if (jobs[j]->remaining_time < shortest_remaining) {
-                    shortest_remaining = jobs[j]->remaining_time;
+            if (jobs[j]->remaining > 0 && jobs[j]->arrival <= current_time) {
+                if (jobs[j]->remaining < shortest_remaining) {
+                    shortest_remaining = jobs[j]->remaining;
                     shortest_idx = j;
                 }
             }
@@ -207,7 +208,7 @@ void policy_STCF()
         struct job *job = jobs[shortest_idx];
 
         // if this is the first time running this job
-        if (job->remaining_time == job->length)
+        if (job->remaining == job->length)
             printf("t=%d: Job %d starts (arrival=%d, length=%d)\n", current_time, job->id, job->arrival, job->length);
         else if (current_job != job)
             printf("t=%d: Switch to Job %d\n", current_time, job->id);
@@ -215,10 +216,10 @@ void policy_STCF()
         current_job = job;
 
         // run for 1 time unit
-        job->remaining_time--;
+        job->remaining--;
         current_time++;
 
-        if (job->remaining_time == 0) {
+        if (job->remaining == 0) {
             job->finish_time = current_time;
             num_completed++;
             printf("t=%d: Job %d finished\n", current_time, job->id);
