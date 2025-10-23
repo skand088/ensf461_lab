@@ -22,7 +22,9 @@ struct job {
     int finish_time; // completion time (Tc)
     int remaining;   // remaining execution time (for preemptive policies)
     int wait_time;   // accumulated wait time
+    int done;        // 0 = not finished, 1 = finished
     struct job *next;
+
 };
 
 // the workload list
@@ -44,6 +46,7 @@ void append_to(struct job **head_pointer, int arrival, int length, int tickets){
     new_job->finish_time = -1;
     new_job->remaining = length;
     new_job->wait_time = 0;
+    new_job->done = 0;
     new_job->next = NULL;
 
     if (*head_pointer == NULL) {
@@ -106,7 +109,53 @@ void policy_SJF()
 {
     printf("Execution trace with SJF:\n");
 
-    // TODO: implement SJF policy
+    int current_time = 0;
+    int remaining = numofjobs;
+    struct job *chosen;
+    struct job *p;
+
+    
+    while (remaining > 0) {
+        chosen = NULL;
+        for (p = head; p != NULL; p = p->next) {
+            if (p->done) continue;
+            if (p->arrival <= current_time) {
+                if (chosen == NULL
+                    || p->length < chosen->length
+                    || (p->length == chosen->length && p->arrival < chosen->arrival)
+                    || (p->length == chosen->length && p->arrival == chosen->arrival && p->id < chosen->id))
+                {
+                    chosen = p;
+                }
+            }
+        }
+
+        if (chosen == NULL) {
+            int next_arrival = INT_MAX;
+            for (p = head; p != NULL; p = p->next) {
+                if (p->done) continue;
+                if (p->arrival < next_arrival) next_arrival = p->arrival;
+            }
+            current_time = next_arrival;
+            continue; 
+        }
+
+        // start chosen job
+        int start = current_time < chosen->arrival ? chosen->arrival : current_time;
+     chosen->start_time = start;
+     printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n",
+         start, chosen->id, chosen->arrival, chosen->length);
+
+        // run to completion
+        current_time = start + chosen->length;
+        chosen->finish_time = current_time;
+        // for non-preemptive SJF, wait time = start - arrival
+        chosen->wait_time = chosen->start_time - chosen->arrival;
+        chosen->done = 1;
+        remaining--;
+
+    /* finished message omitted to match FIFO-style output (start-time lines only) */
+    }
 
     printf("End of execution with SJF.\n");
 
@@ -175,7 +224,7 @@ void policy_FIFO(){
 
         // job finishes
         cur->finish_time = current_time;
-        cur->wait_time = cur->start_time - cur->arrival;
+    cur->done = 1;
 
 
         cur = cur->next;
@@ -252,7 +301,38 @@ int main(int argc, char **argv){
     }
     else if (strcmp(pname, "SJF") == 0)
     {
-        // TODO
+        policy_SJF();
+        if (analysis == 1) {
+            printf("Begin analyzing SJF:\n");
+            struct job *cur2 = head;
+            int count = 0;
+            double total_response = 0;
+            double total_turnaround = 0;
+            double total_wait = 0;
+
+            while (cur2) {
+                int response = cur2->start_time - cur2->arrival;
+                int turnaround = cur2->finish_time - cur2->arrival;
+                int wait = cur2->start_time - cur2->arrival;
+
+                printf("Job %d -- Response time: %d Turnaround: %d Wait: %d\n",
+                       cur2->id, response, turnaround, wait);
+
+                total_response += response;
+                total_turnaround += turnaround;
+                total_wait += wait;
+                count++;
+                cur2 = cur2->next;
+            }
+
+            if (count > 0) {
+                printf("Average -- Response: %.2f Turnaround %.2f Wait %.2f\n",
+                       total_response / count,
+                       total_turnaround / count,
+                       total_wait / count);
+            }
+            printf("End analyzing SJF.\n");
+        }
     }
     else if (strcmp(pname, "STCF") == 0)
     {
