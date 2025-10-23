@@ -17,7 +17,11 @@ struct job {
     int arrival; // arrival time; safely assume the time unit has the minimal increment of 1
     int length;
     int tickets; // number of tickets for lottery scheduling
-    // TODO: add any other metadata you need to track here
+    // metadata for analysis / scheduling
+    int start_time;  // first time the job starts running (Ts)
+    int finish_time; // completion time (Tc)
+    int remaining;   // remaining execution time (for preemptive policies)
+    int wait_time;   // accumulated wait time
     struct job *next;
 };
 
@@ -36,6 +40,10 @@ void append_to(struct job **head_pointer, int arrival, int length, int tickets){
     new_job->arrival = arrival;
     new_job->length = length;
     new_job->tickets = tickets;
+    new_job->start_time = -1;
+    new_job->finish_time = -1;
+    new_job->remaining = length;
+    new_job->wait_time = 0;
     new_job->next = NULL;
 
     if (*head_pointer == NULL) {
@@ -65,9 +73,10 @@ void read_job_config(const char* filename)
     char *length = NULL;
 
     fp = fopen(filename, "r");
-    if (fp == NULL)
-        perror("Error opening file");
+    if (fp == NULL) {
+        fprintf(stderr, "Error opening file '%s'\n", filename);
         exit(EXIT_FAILURE);
+    }
 
     fseek(fp, 0, SEEK_END);
         if (ftell(fp) == 0) {
@@ -148,7 +157,29 @@ void policy_LT(int slice)
 void policy_FIFO(){
     printf("Execution trace with FIFO:\n");
 
-    // TODO: implement FIFO policy
+    int current_time = 0;
+    struct job *cur = head;
+
+    while (cur) {
+        // if job hasn't arrived yet, advance time to its arrival
+        if (current_time < cur->arrival)
+            current_time = cur->arrival;
+
+        // job starts now
+        cur->start_time = current_time;
+        printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n",
+               current_time, cur->id, cur->arrival, cur->length);
+
+        // run to completion
+        current_time += cur->length;
+
+        // job finishes
+        cur->finish_time = current_time;
+        cur->wait_time = cur->start_time - cur->arrival;
+
+
+        cur = cur->next;
+    }
 
     printf("End of execution with FIFO.\n");
 }
@@ -188,7 +219,35 @@ int main(int argc, char **argv){
     if (strcmp(pname, "FIFO") == 0){
         policy_FIFO();
         if (analysis == 1){
-            // TODO: perform analysis
+            printf("Begin analyzing FIFO:\n");
+            struct job *cur2 = head;
+            int count = 0;
+            double total_response = 0;
+            double total_turnaround = 0;
+            double total_wait = 0;
+
+            while (cur2) {
+                int response = cur2->start_time - cur2->arrival;
+                int turnaround = cur2->finish_time - cur2->arrival; 
+                int wait = cur2->wait_time; 
+
+                printf("Job %d -- Response time: %d Turnaround: %d Wait: %d\n",
+                       cur2->id, response, turnaround, wait);
+
+                total_response += response;
+                total_turnaround += turnaround;
+                total_wait += wait;
+                count++;
+                cur2 = cur2->next;
+            }
+
+            if (count > 0) {
+                printf("Average -- Response: %.2f Turnaround %.2f Wait %.2f\n",
+                       total_response / count,
+                       total_turnaround / count,
+                       total_wait / count);
+            }
+            printf("End analyzing FIFO.\n");
         }
     }
     else if (strcmp(pname, "SJF") == 0)
