@@ -233,6 +233,69 @@ void policy_RR(int slice)
 {
     printf("Execution trace with RR:\n");
 
+    if (head == NULL) {
+        printf("End of execution with RR.\n");
+        return;
+    }
+
+    int current_time = 0;
+    int remaining_jobs = numofjobs;
+    struct job *p;
+
+    struct job *cur = head;
+
+    while (remaining_jobs > 0) {
+        struct job *candidate = NULL;
+        struct job *search = cur;
+        if (search == NULL) search = head;
+        do {
+            if (!search->done && search->arrival <= current_time) {
+                candidate = search;
+                break;
+            }
+            search = (search->next != NULL) ? search->next : head;
+        } while (search != cur);
+
+        if (candidate == NULL) {
+            int next_arrival = INT_MAX;
+            for (p = head; p != NULL; p = p->next) {
+                if (p->done) continue;
+                if (p->arrival < next_arrival) next_arrival = p->arrival;
+            }
+            current_time = next_arrival;
+            // reset cur to head for next selection
+            cur = head;
+            continue;
+        }
+
+        // run candidate for up to 'slice' ticks
+        int run_len = min(candidate->remaining, slice);
+        if (candidate->start_time == -1)
+            candidate->start_time = current_time;
+
+        printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n",
+               current_time, candidate->id, candidate->arrival, run_len);
+
+        for (p = head; p != NULL; p = p->next) {
+            if (p == candidate) continue;
+            if (p->done) continue;
+            if (p->arrival <= current_time) {
+                p->wait_time += run_len;
+            }
+        }
+
+        candidate->remaining -= run_len;
+        current_time += run_len;
+
+        if (candidate->remaining == 0) {
+            candidate->finish_time = current_time;
+            candidate->done = 1;
+            remaining_jobs--;
+        }
+
+        cur = (candidate->next != NULL) ? candidate->next : head;
+    }
+
     printf("End of execution with RR.\n");
 }
 
@@ -445,7 +508,41 @@ int main(int argc, char **argv)
     }
     else if (strcmp(pname, "RR") == 0)
     {
-    }
+       policy_RR(slice);
+       if (analysis == 1){
+        printf("Begin analyzing RR:\n");
+
+        int count = 0;
+        struct job *cur2 = head;
+        double total_response = 0;
+        double total_turnaround = 0;
+        double total_wait = 0;
+
+         while (cur2) {
+                int response = cur2->start_time - cur2->arrival;
+                int turnaround = cur2->finish_time - cur2->arrival;
+                int wait = cur2->wait_time;
+
+                printf("Job %d -- Response time: %d Turnaround: %d Wait: %d\n",
+                       cur2->id, response, turnaround, wait);
+
+                total_response += response;
+                total_turnaround += turnaround;
+                total_wait += wait;
+                count++;
+                cur2 = cur2->next;
+            }
+
+            if (count > 0) {
+                printf("Average -- Response: %.2f Turnaround %.2f Wait %.2f\n",
+                       total_response / count,
+                       total_turnaround / count,
+                       total_wait / count);
+            }
+            printf("End analyzing RR.\n");
+        }
+
+       }
     else if (strcmp(pname, "LT") == 0)
     {
         policy_LT(slice);
