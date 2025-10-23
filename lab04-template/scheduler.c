@@ -27,7 +27,27 @@ struct job *head = NULL;
 
 void append_to(struct job **head_pointer, int arrival, int length, int tickets){
 
-    // TODO: create a new job and init it with proper data
+    struct job *new_job = malloc(sizeof(*new_job));
+    if (!new_job) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+    new_job->id = numofjobs++;
+    new_job->arrival = arrival;
+    new_job->length = length;
+    new_job->tickets = tickets;
+    new_job->next = NULL;
+
+    if (*head_pointer == NULL) {
+        *head_pointer = new_job;
+        return;
+    }
+
+    struct job *cur = *head_pointer;
+    while (cur->next)
+        cur = cur->next;
+    cur->next = new_job;
+
     return;
 }
 
@@ -44,12 +64,19 @@ void read_job_config(const char* filename)
     char *arrival = NULL;
     char *length = NULL;
 
-    // TODO, error checking
     fp = fopen(filename, "r");
     if (fp == NULL)
+        perror("Error opening file");
         exit(EXIT_FAILURE);
 
-    // TODO: if the file is empty, we should just exit with error
+    fseek(fp, 0, SEEK_END);
+        if (ftell(fp) == 0) {
+            fprintf(stderr, "Error: Input file '%s' is empty.\n", filename);
+            fclose(fp);
+            exit(EXIT_FAILURE);
+            }
+            rewind(fp);
+
     while ((read = getline(&line, &len, fp)) != -1)
     {
         if( line[read-1] == '\n' )
