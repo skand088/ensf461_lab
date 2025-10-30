@@ -291,16 +291,13 @@ void policy_RR(int slice)
         printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n",
                current_time, candidate->id, candidate->arrival, run_len);
 
-        for (p = head; p != NULL; p = p->next)
-        {
-            if (p == candidate)
-                continue;
-            if (p->done)
-                continue;
-            if (p->arrival <= current_time)
-            {
-                p->wait_time += run_len;
-            }
+        for (p = head; p != NULL; p = p->next) {
+            if (p == candidate) continue;
+            if (p->done) continue;
+            int start_ready = (p->arrival > current_time) ? p->arrival : current_time;
+            int overlap = (current_time + run_len) - start_ready;
+            if (overlap > 0)
+                p->wait_time += overlap;
         }
 
         candidate->remaining -= run_len;
@@ -314,7 +311,12 @@ void policy_RR(int slice)
         }
 
         cur = (candidate->next != NULL) ? candidate->next : head;
+
+        if (candidate->start_time == -1)
+            candidate->start_time = current_time;
+
     }
+
 
     printf("End of execution with RR.\n");
 }
@@ -409,8 +411,10 @@ void policy_FIFO()
         current_time += cur->length;
 
         // job finishes
-        cur->finish_time = current_time;
-        cur->done = 1;
+     cur->finish_time = current_time;
+     // for non-preemptive FIFO, wait time = start - arrival
+     cur->wait_time = cur->start_time - cur->arrival;
+     cur->done = 1;
 
         cur = cur->next;
     }
@@ -465,7 +469,7 @@ int main(int argc, char **argv)
             {
                 int response = cur2->start_time - cur2->arrival;
                 int turnaround = cur2->finish_time - cur2->arrival;
-                int wait = cur2->start_time - cur2->arrival;
+                int wait = cur2->wait_time;
 
                 printf("Job %d -- Response time: %d  Turnaround: %d  Wait: %d\n",
                        cur2->id, response, turnaround, wait);
@@ -541,7 +545,7 @@ int main(int argc, char **argv)
             {
                 int response = cur2->start_time - cur2->arrival;
                 int turnaround = cur2->finish_time - cur2->arrival;
-                int wait = cur2->start_time - cur2->arrival;
+                int wait = turnaround - cur2->length;
                 printf("Job %d -- Response time: %d  Turnaround: %d  Wait: %d\n",
                        cur2->id, response, turnaround, wait);
                 total_response += response;
@@ -578,7 +582,7 @@ int main(int argc, char **argv)
             {
                 int response = cur2->start_time - cur2->arrival;
                 int turnaround = cur2->finish_time - cur2->arrival;
-                int wait = cur2->start_time - cur2->arrival;
+                int wait = cur2->wait_time;
 
                 printf("Job %d -- Response time: %d  Turnaround: %d  Wait: %d\n",
                        cur2->id, response, turnaround, wait);
