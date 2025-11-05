@@ -84,18 +84,18 @@ int mydestroy()
 void* myalloc(size_t size)
 {
     printf("Allocating memory:\n");
-    
-    // Check if arena is initialized
+
     if (_arena_start == NULL) {
         printf("...error: arena not initialized\n");
         statusno = ERR_UNINITIALIZED;
         return NULL;
     }
-    
+
     node_t* curr = _free_list_head;
 
-    // Find a free chunk large enough
-    while (curr != NULL && (!curr->is_free || curr->size < size)) {
+    // Find first free chunk large enough
+    while (curr != NULL) {
+        if (curr->is_free && curr->size >= size) break;
         curr = curr->fwd;
     }
 
@@ -107,31 +107,28 @@ void* myalloc(size_t size)
 
     printf("...found free chunk of %zu bytes with header at %p\n", curr->size, curr);
 
-    // Check if we should split the chunk
+    // Split chunk if enough space remains for a new free chunk
     size_t remaining = curr->size - size;
     if (remaining > sizeof(node_t)) {
-        // Split: create a new free chunk after the allocated one
         node_t* new_chunk = (node_t*)((char*)curr + sizeof(node_t) + size);
         new_chunk->size = remaining - sizeof(node_t);
         new_chunk->is_free = 1;
         new_chunk->fwd = curr->fwd;
         new_chunk->bwd = curr;
 
-        if (curr->fwd)
-            curr->fwd->bwd = new_chunk;
+        if (curr->fwd) curr->fwd->bwd = new_chunk;
         curr->fwd = new_chunk;
         curr->size = size;
+
+        printf("...splitting chunk, new free chunk at %p of size %zu\n", new_chunk, new_chunk->size);
     }
 
-    // Mark current chunk as allocated
     curr->is_free = 0;
 
-    // Return pointer to usable memory (after header)
     void* user_ptr = (char*)curr + sizeof(node_t);
     printf("...allocation starts at %p\n", user_ptr);
     return user_ptr;
 }
-
 
 void myfree(void* ptr)
 {
@@ -140,7 +137,6 @@ void myfree(void* ptr)
 
     if (ptr == NULL) return;
 
-    // Check if arena is initialized
     if (_arena_start == NULL) {
         printf("...error: arena not initialized\n");
         statusno = ERR_UNINITIALIZED;
@@ -149,25 +145,25 @@ void myfree(void* ptr)
 
     node_t* header = (node_t*)((char*)ptr - sizeof(node_t));
     printf("...accessing chunk header at %p\n", header);
+
     header->is_free = 1;
-
     printf("...chunk of size %zu\n", header->size);
-    printf("...checking if coalescing is needed\n");
 
-    // Try to merge with next
     if (header->fwd && header->fwd->is_free) {
-        header->size += sizeof(node_t) + header->fwd->size;
-        header->fwd = header->fwd->fwd;
-        if (header->fwd)
-            header->fwd->bwd = header;
+        node_t* next = header->fwd;
+        header->size += sizeof(node_t) + next->size;
+        header->fwd = next->fwd;
+        if (next->fwd) next->fwd->bwd = header;
+        printf("...coalesced with next chunk at %p\n", next);
     }
 
-    // Try to merge with previous
     if (header->bwd && header->bwd->is_free) {
-        header->bwd->size += sizeof(node_t) + header->size;
-        header->bwd->fwd = header->fwd;
-        if (header->fwd)
-            header->fwd->bwd = header->bwd;
+        node_t* prev = header->bwd;
+        prev->size += sizeof(node_t) + header->size;
+        prev->fwd = header->fwd;
+        if (header->fwd) header->fwd->bwd = prev;
+        header = prev; // update header pointer for clarity
+        printf("...coalesced with previous chunk at %p\n", prev);
     }
 
     printf("...coalescing done (if needed)\n");
