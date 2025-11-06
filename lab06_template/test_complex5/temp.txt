@@ -1,0 +1,13 @@
+Current PID: 0. Memory instantiation complete. OFF bits: 1. PFN bits: 2. VPN bits: 2
+Current PID: 0. Mapped virtual page number 0 to physical frame number 0
+Current PID: 0. Mapped virtual page number 0 to physical frame number 1
+Current PID: 0. Mapped virtual page number 0 to physical frame number 2
+Current PID: 0. Mapped virtual page number 0 to physical frame number 3
+Current PID: 0. Inspected physical location 0. Content: 0
+Current PID: 0. Inspected physical location 1. Content: 0
+Current PID: 0. Inspected physical location 2. Content: 0
+Current PID: 0. Inspected physical location 3. Content: 0
+Current PID: 0. Inspected physical location 4. Content: 0
+Current PID: 0. Inspected physical location 5. Content: 0
+Current PID: 0. Inspected physical location 6. Content: 0
+Current PID: 0. Inspected physical location 7. Content: 0
