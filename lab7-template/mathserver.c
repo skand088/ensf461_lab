@@ -22,6 +22,11 @@ pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 FILE *log_file;
 
+int input_done = 0;
+pthread_cond_t work_ready = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t work_lock = PTHREAD_MUTEX_INITIALIZER;
+
+
 static void log_set(int ctx, long long val) {
     pthread_mutex_lock(&log_lock);
     fprintf(log_file, "ctx %02d: set to value %lld\n", ctx, val);
@@ -60,13 +65,13 @@ long long fib_slow(long long n) {
 /* produce comma-separated primes <= n */
 char* primes_str(long long n) {
     if (n < 2) {
-        char *s = malloc(2);
+        char *s = malloc(1);
         s[0] = '\0';
         return s;
     }
 
-    /* allocate a reasonably large buffer */
-    size_t cap = 65536;
+    // Start with reasonable buffer
+    size_t cap = 1024;
     char *out = malloc(cap);
     if (!out) return NULL;
     out[0] = '\0';
@@ -74,19 +79,27 @@ char* primes_str(long long n) {
     int first = 1;
     for (long long i = 2; i <= n; ++i) {
         int is_prime = 1;
-        for (long long j = 2; j * j <= i; ++j) {
+        for (long long j = 2; j*j <= i; ++j) {
             if (i % j == 0) { is_prime = 0; break; }
         }
         if (is_prime) {
-            if (!first) strncat(out, ", ", cap - strlen(out) - 1);
-            first = 0;
             char tmp[32];
             snprintf(tmp, sizeof(tmp), "%lld", i);
-            strncat(out, tmp, cap - strlen(out) - 1);
+            size_t needed = strlen(out) + strlen(tmp) + (first ? 1 : 3); // comma + space + null
+            while (needed > cap) {
+                cap *= 2;
+                out = realloc(out, cap);
+                if (!out) return NULL;
+            }
+
+            if (!first) strcat(out, ", ");
+            first = 0;
+            strcat(out, tmp);
         }
     }
     return out;
 }
+
 
 double pi_leibniz(long long iters) {
     if (iters <= 0) return 0.0;
@@ -117,69 +130,120 @@ void enqueue(int ctx, const char *op, long long arg) {
     pthread_mutex_unlock(&queue_locks[ctx]);
 }
 
+#define LOG_BATCH 10
+
+typedef struct {
+    char *lines[LOG_BATCH];
+    int count;
+} LogBatch;
+
 void* worker(void *arg) {
     int ctx = *(int*)arg;
+    LogBatch batch = { .count = 0 };
 
     while (1) {
         pthread_mutex_lock(&queue_locks[ctx]);
+        while (queues[ctx] == NULL && !input_done) {
+            pthread_mutex_unlock(&queue_locks[ctx]);
+            pthread_mutex_lock(&work_lock);
+            pthread_cond_wait(&work_ready, &work_lock);
+            pthread_mutex_unlock(&work_lock);
+            pthread_mutex_lock(&queue_locks[ctx]);
+        }
+
         Operation *op = queues[ctx];
         if (!op) {
             pthread_mutex_unlock(&queue_locks[ctx]);
-            break; /* no more operations */
+            break;
         }
         queues[ctx] = op->next;
         pthread_mutex_unlock(&queue_locks[ctx]);
 
+        char *line = NULL;  // dynamically allocated log line
         long long val = op->arg;
 
         if (strcmp(op->op, "set") == 0) {
             contexts[ctx] = val;
-            log_set(ctx, contexts[ctx]);
+            size_t len = 50;
+            line = malloc(len);
+            snprintf(line, len, "ctx %02d: set to value %lld\n", ctx, contexts[ctx]);
         }
         else if (strcmp(op->op, "add") == 0) {
             contexts[ctx] += val;
-            log_simple(ctx, "add", val, contexts[ctx]);
+            size_t len = 70;
+            line = malloc(len);
+            snprintf(line, len, "ctx %02d: add %lld (result: %lld)\n", ctx, val, contexts[ctx]);
         }
         else if (strcmp(op->op, "sub") == 0) {
             contexts[ctx] -= val;
-            log_simple(ctx, "sub", val, contexts[ctx]);
+            size_t len = 70;
+            line = malloc(len);
+            snprintf(line, len, "ctx %02d: sub %lld (result: %lld)\n", ctx, val, contexts[ctx]);
         }
         else if (strcmp(op->op, "mul") == 0) {
             contexts[ctx] *= val;
-            log_simple(ctx, "mul", val, contexts[ctx]);
+            size_t len = 70;
+            line = malloc(len);
+            snprintf(line, len, "ctx %02d: mul %lld (result: %lld)\n", ctx, val, contexts[ctx]);
         }
         else if (strcmp(op->op, "div") == 0) {
-            if (val == 0) {
-                /* if divide by zero, perform no change but still log result format */
-                log_simple(ctx, "div", val, contexts[ctx]);
-            } else {
-                contexts[ctx] /= val;
-                log_simple(ctx, "div", val, contexts[ctx]);
-            }
+            if (val != 0) contexts[ctx] /= val;
+            size_t len = 70;
+            line = malloc(len);
+            snprintf(line, len, "ctx %02d: div %lld (result: %lld)\n", ctx, val, contexts[ctx]);
         }
         else if (strcmp(op->op, "fib") == 0) {
-            long long n = contexts[ctx];
-            long long res = fib_slow(n);
-            log_fib(ctx, res);
+            long long res = fib_slow(contexts[ctx]);
+            size_t len = 70;
+            line = malloc(len);
+            snprintf(line, len, "ctx %02d: fib (result: %lld)\n", ctx, res);
         }
         else if (strcmp(op->op, "pri") == 0) {
-            long long n = contexts[ctx];
-            char *list = primes_str(n);
-            if (!list) list = strdup("");
-            log_primes(ctx, list);
+            char *list = primes_str(contexts[ctx]);
+            size_t len = strlen(list) + 50;  // dynamic size for full prime list
+            line = malloc(len);
+            snprintf(line, len, "ctx %02d: primes (result: %s)\n", ctx, list);
             free(list);
         }
         else if (strcmp(op->op, "pia") == 0) {
-            long long iters = contexts[ctx];
-            double res = pi_leibniz(iters);
-            log_pia(ctx, res);
+            double res = pi_leibniz(contexts[ctx]);
+            size_t len = 80;
+            line = malloc(len);
+            snprintf(line, len, "ctx %02d: pia (result %.15f)\n", ctx, res);
         }
-        /* unknown ops are silently ignored */
+
         free(op);
+
+        // Add line to batch
+        if (line) {
+            batch.lines[batch.count++] = line;
+        }
+
+        // Write batch if full
+        if (batch.count == LOG_BATCH) {
+            pthread_mutex_lock(&log_lock);
+            for (int i = 0; i < batch.count; ++i) {
+                fputs(batch.lines[i], log_file);
+                free(batch.lines[i]);
+            }
+            pthread_mutex_unlock(&log_lock);
+            batch.count = 0;
+        }
+    }
+
+    // Flush remaining lines
+    if (batch.count > 0) {
+        pthread_mutex_lock(&log_lock);
+        for (int i = 0; i < batch.count; ++i) {
+            fputs(batch.lines[i], log_file);
+            free(batch.lines[i]);
+        }
+        pthread_mutex_unlock(&log_lock);
     }
 
     return NULL;
 }
+
 
 /* trim leading/trailing whitespace */
 static char* trim(char *s) {
@@ -206,63 +270,68 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    /* init */
+    /* init contexts and mutexes */
     for (int i = 0; i < MAX_CTX; ++i) {
         contexts[i] = 0;
         queues[i] = NULL;
         pthread_mutex_init(&queue_locks[i], NULL);
     }
 
+    int used_contexts[MAX_CTX] = {0};
+    int context_order[MAX_CTX];
+    int order_count = 0;
+
+    /* read input file and enqueue operations */
     char buffer[1024];
     while (fgets(buffer, sizeof(buffer), input_file)) {
-        /* trim newline and whitespace */
         buffer[strcspn(buffer, "\n")] = '\0';
         char *line = trim(buffer);
-        if (line[0] == '\0') continue;           /* skip blank */
-        if (line[0] == '#') continue;            /* skip comment */
+        if (line[0] == '\0' || line[0] == '#') continue;
 
         int ctx = -1;
         char op[16] = {0};
         long long val = 0;
-
-        /* FIX: parse op first, then ctx, then optional value */
         int parts = sscanf(line, "%15s %d %lld", op, &ctx, &val);
-        /* parts:
-           1 -> only op (not expected but skip)
-           2 -> op ctx
-           3 -> op ctx val
-        */
         if (parts >= 2) {
-            /* normalize op to lowercase */
             for (char *p = op; *p; ++p) *p = (char)tolower((unsigned char)*p);
+            if (ctx < 0 || ctx >= MAX_CTX) continue;
 
-            if (ctx < 0 || ctx >= MAX_CTX) {
-                /* invalid context index: ignore line */
-                continue;
-            }
-
-            /* if only op+ctx (parts==2), keep val as 0 - that's acceptable for ops that don't need arg */
             enqueue(ctx, op, val);
+
+            /* track first appearance for deterministic order */
+            if (!used_contexts[ctx]) {
+                used_contexts[ctx] = 1;
+                context_order[order_count++] = ctx;
+            }
         }
     }
 
-    /* spawn workers */
+    /* spawn workers in order of first appearance */
     int ids[MAX_CTX];
-    for (int i = 0; i < MAX_CTX; ++i) {
-        ids[i] = i;
+    for (int i = 0; i < order_count; ++i) {
+        ids[i] = context_order[i];
         pthread_create(&threads[i], NULL, worker, &ids[i]);
     }
 
-    for (int i = 0; i < MAX_CTX; ++i) {
+    /* signal workers that input is complete and wake them up */
+    pthread_mutex_lock(&work_lock);
+    input_done = 1;
+    pthread_cond_broadcast(&work_ready);
+    pthread_mutex_unlock(&work_lock);
+
+    /* join all threads */
+    for (int i = 0; i < order_count; ++i) {
         pthread_join(threads[i], NULL);
     }
 
     fclose(input_file);
     fclose(log_file);
 
-    /* destroy mutexes */
+    /* destroy mutexes and cond */
     for (int i = 0; i < MAX_CTX; ++i) pthread_mutex_destroy(&queue_locks[i]);
     pthread_mutex_destroy(&log_lock);
+    pthread_mutex_destroy(&work_lock);
+    pthread_cond_destroy(&work_ready);
 
     return 0;
 }
